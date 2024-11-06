@@ -11,11 +11,12 @@ import json
 from model import Model
 import train_agent
 from utils import *
+import pygame
 
 import torch
 NUM_ITS = 20
 beta_i  = 0.9
-T       = 4000
+T       = 100
 s = """  ____    _                         
  |  _ \  / \   __ _  __ _  ___ _ __ 
  | | | |/ _ \ / _` |/ _` |/ _ \ '__|
@@ -28,20 +29,35 @@ s = """  ____    _
 def wait():
     _ = input()
 
-def key_press(k, mod):
-    global restart
-    if k == 0xff0d: restart = True
-    if k == key.LEFT:  a[0] = -1.0
-    if k == key.RIGHT: a[0] = +1.0
-    if k == key.UP:    a[1] = +1.0
-    if k == key.DOWN:  a[2] = +0.2
+def register_input():
+    global quit, restart
+    for event in pygame.event.get():
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT:
+                a[0] = -1.0
+            if event.key == pygame.K_RIGHT:
+                a[0] = +1.0
+            if event.key == pygame.K_UP:
+                a[1] = +1.0
+            if event.key == pygame.K_DOWN:
+                a[2] = +0.8  # set 1.0 for wheels to block to zero rotation
+            if event.key == pygame.K_RETURN:
+                restart = True
+            if event.key == pygame.K_ESCAPE:
+                quit = True
 
-def key_release(k, mod):
-    if k == key.LEFT and a[0] == -1.0: a[0] = 0.0
-    if k == key.RIGHT and a[0] == +1.0: a[0] = 0.0
-    if k == key.UP:    a[1] = 0.0
-    if k == key.DOWN:  a[2] = 0.0
+        if event.type == pygame.KEYUP:
+            if event.key == pygame.K_LEFT:
+                a[0] = 0
+            if event.key == pygame.K_RIGHT:
+                a[0] = 0
+            if event.key == pygame.K_UP:
+                a[1] = 0
+            if event.key == pygame.K_DOWN:
+                a[2] = 0
 
+        if event.type == pygame.QUIT:
+            quit = True
 
 def store_data(data, datasets_dir="./data"):
     # save data
@@ -95,11 +111,9 @@ if __name__ == "__main__":
         "terminal" : [],
     }
 
-    env = gym.make('CarRacing-v2').unwrapped
+    env = gym.make('CarRacing-v2', render_mode='human').unwrapped
 
     env.reset()
-    env.viewer.window.on_key_press = key_press
-    env.viewer.window.on_key_release = key_release
     
     episode_rewards = []
     steps = 0
@@ -107,8 +121,6 @@ if __name__ == "__main__":
     agent.save("dagger_models/model_0.pth")
     model_number = 0
     old_model_number = 0
-
-
     for iteration in range(NUM_ITS):
         agent = Model()
         agent.load("dagger_models/model_{}.pth".format(model_number))
@@ -121,14 +133,12 @@ if __name__ == "__main__":
 
         episode_reward = 0
         state = env.reset() 
-        # pi: input to the environment
-        # a : expert input
-        pi = np.array([0.0, 0.0, 0.0]).astype('float32')
+        pi = np.array([ 0.0, 0.0, 0.0 ])
         a = np.zeros_like(pi)
 
         while True:
-
-            next_state, r, done, info = env.step(pi)
+            register_input()
+            next_state, r, terminated, truncated, info = env.step(pi)
 
             # preprocess image and find prediction ->  policy(state)
             gray = np.dot(next_state[...,:3], [0.2125, 0.7154, 0.0721])[:84,...]
@@ -138,11 +148,12 @@ if __name__ == "__main__":
             pi = curr_beta * a + (1 - curr_beta) * prediction.detach().numpy().flatten()
             episode_reward += r
 
-            samples["state"].append(state)            # state has shape (96, 96, 3)
-            samples["action"].append(np.array(a))     # action has shape (1, 3), STORE THE EXPERT ACTION
-            samples["next_state"].append(next_state)
-            samples["reward"].append(r)
-            samples["terminal"].append(done)
+            if steps % T != 0:
+                samples["state"].append(state)            # state has shape (96, 96, 3)
+                samples["action"].append(np.array(a))     # action has shape (1, 3), STORE THE EXPERT ACTION
+                samples["next_state"].append(next_state)
+                samples["reward"].append(r)
+                samples["terminal"].append(terminated)
             
             state = next_state
             steps += 1
@@ -152,8 +163,11 @@ if __name__ == "__main__":
                 print('... saving data')
                 store_data(samples, "./data")
                 save_results(episode_rewards, "./results")
-                X_train, y_train, X_valid, y_valid = train_agent.read_data("./data", "data_dagger.pkl.gzip")
-                X_train, y_train, X_valid, y_valid = train_agent.preprocessing(X_train, y_train, X_valid, y_valid, history_length=1)
+                X, y, n_samples = np.array(samples["state"][1:]).astype("float32"), np.array(samples["action"][1:]).astype("float32"), len(samples["state"])
+                frac = 0.1
+                X_train, y_train = X[:int((1-frac) * n_samples)], y[:int((1-frac) * n_samples)]
+                X_valid, y_valid = X[int((1-frac) * n_samples):], y[int((1-frac) * n_samples):]
+                X_train, y_train, X_valid, y_valid = train_agent.preprocessing(X_train, y_train, X_valid, y_valid)
                 train_agent.train_model(X_train, y_train, X_valid, y_valid, "dagger_models/model_{}.pth".format(model_number+1), num_epochs=10)
                 model_number += 1
                 print("Training complete. Press return to continue to the next iteration")
@@ -161,7 +175,7 @@ if __name__ == "__main__":
                 break
 
             env.render()
-            if done: 
+            if terminated: 
                 
                 break
         

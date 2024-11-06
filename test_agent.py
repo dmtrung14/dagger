@@ -18,23 +18,24 @@ def run_episode(env, agent, rendering=True, max_timesteps=1000):
     episode_reward = 0
     step = 0
     state = env.reset()
-
+    a = np.array([ 0.0, 0.0, 0.0 ])
     while True:
-        # preprocessing 
-        gray = np.dot(state[...,:3], [0.2125, 0.7154, 0.0721])[:84,...]
-        pred = agent(torch.from_numpy(gray[np.newaxis, np.newaxis,...]).type(torch.FloatTensor))
-        a    = pred.detach().numpy().flatten()
-
+        # preprocessing
+        if step != 0:
+            gray = np.dot(state[...,:3], [0.2125, 0.7154, 0.0721])[:84,...]
+            pred = agent(torch.from_numpy(gray[np.newaxis, np.newaxis,...]).type(torch.FloatTensor))
+            a = pred.detach().numpy().flatten().astype("float64")
         # take action, receive new state & reward
-        next_state, r, done, info = env.step(a)   
+        next_state, r, terminated, truncated, info = env.step(a) 
         episode_reward += r       
         state = next_state
         step += 1
         
+
         if rendering:
             env.render()
 
-        if done or step > max_timesteps: 
+        if terminated or step > max_timesteps: 
             break
 
     return episode_reward
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     print("Loading model {}:".format(args.path))
     agent.load(args.path)
     # agent.load("models/agent.ckpt")
-    env = gym.make('CarRacing-v0').unwrapped
+    env = gym.make('CarRacing-v2', render_mode="human").unwrapped
 
     episode_rewards = []
     for i in range(n_test_episodes):
