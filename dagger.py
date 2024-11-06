@@ -74,7 +74,7 @@ def save_results(episode_rewards, results_dir="./results"):
 if __name__ == "__main__":
 
     print(s)
-    print("Welcome to the DAgger Algorithm for CarRacing-v0!")
+    print("Welcome to the DAgger Algorithm for CarRacing-v2!")
     print("Drive the car using the arrow keys.")
     print("After every {} timesteps, the game will freeze and train the agent using the collected data.".format(T))
     print("After each training loop, the previously trained network will have more control of the action taken.")
