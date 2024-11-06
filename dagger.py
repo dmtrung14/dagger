@@ -16,7 +16,7 @@ import pygame
 import torch
 NUM_ITS = 20
 beta_i  = 0.9
-T       = 100
+T       = 500
 s = """  ____    _                         
  |  _ \  / \   __ _  __ _  ___ _ __ 
  | | | |/ _ \ / _` |/ _` |/ _ \ '__|
@@ -38,7 +38,7 @@ def register_input():
             if event.key == pygame.K_RIGHT:
                 a[0] = +1.0
             if event.key == pygame.K_UP:
-                a[1] = +1.0
+                a[1] = min(a[1] + 1, 10.0)
             if event.key == pygame.K_DOWN:
                 a[2] = +0.8  # set 1.0 for wheels to block to zero rotation
             if event.key == pygame.K_RETURN:
